@@ -1,0 +1,87 @@
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
+
+using NuciXNA.DataAccess.Content;
+using NuciXNA.Gui;
+using NuciXNA.Gui.Controls;
+using NuciXNA.Gui.Screens;
+using NuciXNA.Input;
+using NuciXNA.Primitives;
+
+using BackgammonByHoratiu.Settings;
+
+namespace BackgammonByHoratiu.Gui.Screens
+{
+    public class SplashScreen : Screen
+    {
+        public float Delay { get; set; }
+
+        public GuiImage LogoImage { get; set; }
+
+        Size2D logoNativeSize;
+
+        public SplashScreen()
+        {
+            Delay = 2;
+        }
+
+        protected override void DoLoadContent()
+        {
+            Texture2D logoTexture = NuciContentManager.Instance.LoadTexture2D("SplashScreen/Logo");
+            logoNativeSize = new Size2D(logoTexture.Width, logoTexture.Height);
+
+            LogoImage = new GuiImage { ContentFile = "SplashScreen/Logo" };
+
+            GuiManager.Instance.RegisterControls(LogoImage);
+            RegisterEvents();
+            SetChildrenProperties();
+        }
+
+        protected override void DoUnloadContent() => UnregisterEvents();
+
+        protected override void DoUpdate(GameTime gameTime)
+        {
+            if (Delay <= 0)
+            {
+                ChangeScreen();
+            }
+
+            Delay -= (float)gameTime.ElapsedGameTime.TotalSeconds;
+
+            SetChildrenProperties();
+        }
+
+        protected override void DoDraw(SpriteBatch spriteBatch) { }
+
+        void RegisterEvents()
+        {
+            InputManager.Instance.KeyboardKeyPressed += OnKeyboardKeyPressed;
+            InputManager.Instance.MouseButtonPressed += OnMouseButtonPressed;
+        }
+
+        void UnregisterEvents()
+        {
+            InputManager.Instance.KeyboardKeyPressed -= OnKeyboardKeyPressed;
+            InputManager.Instance.MouseButtonPressed -= OnMouseButtonPressed;
+        }
+
+        void SetChildrenProperties()
+        {
+            int logoWidth = (int)(GameDefines.WindowWidth * 0.8f);
+            int logoHeight = (logoNativeSize.Width > 0)
+                ? (int)(logoWidth * (float)logoNativeSize.Height / logoNativeSize.Width)
+                : logoWidth;
+            int offsetX = (GameDefines.WindowWidth - logoWidth) / 2;
+            int offsetY = (GameDefines.WindowHeight - logoHeight) / 2;
+
+            LogoImage.Location = new Point2D(offsetX, offsetY);
+            LogoImage.Size = new Size2D(logoWidth, logoHeight);
+        }
+
+        void ChangeScreen() => ScreenManager.Instance.ChangeScreens<GameplayScreen>();
+
+        void OnKeyboardKeyPressed(object sender, KeyboardKeyEventArgs e) => ChangeScreen();
+
+        void OnMouseButtonPressed(object sender, MouseButtonEventArgs e) => ChangeScreen();
+    }
+}
