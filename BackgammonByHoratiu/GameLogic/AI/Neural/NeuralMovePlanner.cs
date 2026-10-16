@@ -28,12 +28,19 @@ namespace BackgammonByHoratiu.GameLogic.AI.Neural
             this.policy = policy;
         }
 
+        internal static NeuralMovePlanner Shared { get; private set; }
+
         /// <summary>
-        /// Loads the network from BACKGAMMON_AI_NET, or from "Ai/net.bgnn" next to the executable.
-        /// Returns null (and the original search AI keeps playing) if there is no usable file.
+        /// The only AI of the game. Loads the network from BACKGAMMON_AI_NET, or from "Ai/net.bgnn" next to
+        /// the executable. Throws when there is no usable network: play.ps1 / play.bat train and export one first.
         /// </summary>
-        internal static NeuralMovePlanner TryLoadDefault()
+        internal static void EnsureLoaded()
         {
+            if (Shared is not null)
+            {
+                return;
+            }
+
             string path = Environment.GetEnvironmentVariable(NetworkPathVariable);
 
             if (string.IsNullOrWhiteSpace(path))
@@ -43,22 +50,12 @@ namespace BackgammonByHoratiu.GameLogic.AI.Neural
 
             if (!File.Exists(path))
             {
-                return null;
+                throw new FileNotFoundException(
+                    $"The AI network was not found ({path}). Start the game with play.bat (or play.ps1): "
+                    + "it trains the AI first when there is no trained network yet.");
             }
 
-            try
-            {
-                NeuralNetwork network = NeuralNetwork.Load(path);
-
-                return new NeuralMovePlanner(new NeuralPolicy(network, DefaultDepth, DefaultTopCandidates));
-            }
-            catch (Exception exception) when (
-                exception is IOException or InvalidDataException or UnauthorizedAccessException)
-            {
-                Console.Error.WriteLine($"Neural AI disabled: {exception.Message}");
-
-                return null;
-            }
+            Shared = new NeuralMovePlanner(new NeuralPolicy(NeuralNetwork.Load(path), DefaultDepth, DefaultTopCandidates));
         }
 
         // Must be called on the game thread; the result is a private copy that is safe to search elsewhere.

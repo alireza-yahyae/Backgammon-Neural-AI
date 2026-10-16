@@ -8,23 +8,24 @@ using BackgammonByHoratiu.GameLogic.GameManagers;
 
 namespace BackgammonByHoratiu.GameLogic.AI
 {
+    /// <summary>
+    /// Plays Player 2 with the self-play trained network (Ai/net.bgnn, see NeuralMovePlanner).
+    /// </summary>
     internal sealed class BackgammonAi
     {
+        // After this many refused plans in one turn the AI stops trying and passes the turn.
+        const int MaxRefusedPlansPerTurn = 3;
+
         readonly IGameManager game;
         readonly Queue<MoveAction> plannedMoves;
 
-        // Self-play trained network (Ai/net.bgnn). Null when no usable file exists,
-        // in which case the original search-based AI plays.
-        readonly NeuralMovePlanner neuralPlanner;
-
-        Task<List<MoveAction>> neuralPlanTask;
-        bool useLegacySearchThisTurn;
+        Task<List<MoveAction>> planTask;
+        int refusedPlans;
 
         internal BackgammonAi(IGameManager game)
         {
             this.game = game;
             plannedMoves = new Queue<MoveAction>();
-            neuralPlanner = NeuralMovePlanner.TryLoadDefault();
         }
 
         internal void Reset()
@@ -32,8 +33,8 @@ namespace BackgammonByHoratiu.GameLogic.AI
             plannedMoves.Clear();
 
             // A plan that is still being computed is simply ignored when it finishes.
-            neuralPlanTask = null;
-            useLegacySearchThisTurn = false;
+            planTask = null;
+            refusedPlans = 0;
         }
 
         internal void TryPlayMove()
@@ -46,14 +47,21 @@ namespace BackgammonByHoratiu.GameLogic.AI
                 return;
             }
 
-            if (neuralPlanTask is not null)
+            if (refusedPlans >= MaxRefusedPlansPerTurn)
             {
-                if (!neuralPlanTask.IsCompleted)
+                TryNextTurn();
+
+                return;
+            }
+
+            if (planTask is not null)
+            {
+                if (!planTask.IsCompleted)
                 {
                     return;
                 }
 
-                AcceptNeuralPlan();
+                AcceptPlan();
 
                 if (plannedMoves.Count == 0)
                 {
@@ -69,19 +77,7 @@ namespace BackgammonByHoratiu.GameLogic.AI
 
             if (plannedMoves.Count == 0)
             {
-                if (neuralPlanner is not null && !useLegacySearchThisTurn)
-                {
-                    StartNeuralPlan();
-
-                    return;
-                }
-
-                PlanTurnWithLegacySearch();
-            }
-
-            if (plannedMoves.Count == 0)
-            {
-                TryNextTurn();
+                StartPlan();
 
                 return;
             }
@@ -91,40 +87,22 @@ namespace BackgammonByHoratiu.GameLogic.AI
 
         // The search runs on a worker thread so the window keeps responding while the AI thinks.
         // It works on a private copy of the board, so the game state is never touched from there.
-        void StartNeuralPlan()
+        void StartPlan()
         {
+            NeuralMovePlanner planner = NeuralMovePlanner.Shared;
             BgPosition position = NeuralMovePlanner.CreatePosition(game);
             List<int> dice = [.. game.Player2.MovesLeft];
 
-            neuralPlanTask = Task.Run(() => neuralPlanner.Plan(position, dice));
+            planTask = Task.Run(() => planner.Plan(position, dice));
         }
 
-        void AcceptNeuralPlan()
+        void AcceptPlan()
         {
-            Task<List<MoveAction>> finished = neuralPlanTask;
-            neuralPlanTask = null;
+            Task<List<MoveAction>> finished = planTask;
+            planTask = null;
 
-            if (finished.IsFaulted || finished.IsCanceled)
-            {
-                _ = finished.Exception;
-                useLegacySearchThisTurn = true;
-                PlanTurnWithLegacySearch();
-
-                return;
-            }
-
-            foreach (MoveAction action in finished.Result)
-            {
-                plannedMoves.Enqueue(action);
-            }
-        }
-
-        void PlanTurnWithLegacySearch()
-        {
-            BoardSnapshot snapshot = new(game);
-            MoveSequenceResult bestSequence = MoveSearcher.FindBestSequence(snapshot);
-
-            foreach (MoveAction action in bestSequence.Actions)
+            // A crash inside the search is a bug, not something to hide: let it surface.
+            foreach (MoveAction action in finished.GetAwaiter().GetResult())
             {
                 plannedMoves.Enqueue(action);
             }
@@ -140,10 +118,9 @@ namespace BackgammonByHoratiu.GameLogic.AI
             }
             catch (PieceMoveException)
             {
-                // The game refused a planned move: drop the plan and use the original search
-                // for the rest of this turn, so the AI can never get stuck repeating the same move.
+                // The game refused a planned move: drop the plan and plan again from the current board.
                 plannedMoves.Clear();
-                useLegacySearchThisTurn = true;
+                refusedPlans++;
             }
         }
 

@@ -1,2 +1,2 @@
-Put the trained network here as  net.bgnn  (made with tools/export_weights.py).
-If the file is missing the game still works: the original search AI plays instead.
+net.bgnn (the trained network) is created here by play.ps1 / play.bat.
+The game needs it to start; it is the game's only AI.

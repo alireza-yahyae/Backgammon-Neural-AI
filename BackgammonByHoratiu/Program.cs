@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 
+using BackgammonByHoratiu.GameLogic.AI.Neural;
 using BackgammonByHoratiu.Settings;
 
 namespace BackgammonByHoratiu
@@ -28,6 +29,20 @@ namespace BackgammonByHoratiu
         static void Main()
         {
             PrepareFiles();
+
+            try
+            {
+                NeuralMovePlanner.EnsureLoaded();
+            }
+            catch (Exception exception) when (
+                exception is IOException or InvalidDataException or UnauthorizedAccessException)
+            {
+                Console.Error.WriteLine(exception.Message);
+                Environment.ExitCode = 2;
+
+                return;
+            }
+
             RunGame();
         }
     }
